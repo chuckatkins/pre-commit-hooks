@@ -47,6 +47,10 @@ Check for files with names that would conflict on a case-insensitive filesystem 
 
 #### `check-executables-have-shebangs`
 Checks that non-binary executables have a proper shebang.
+  - `--require-env` - Require shebangs to invoke an interpreter through
+    `/usr/bin/env` (e.g. `#!/usr/bin/env python`).
+  - `--fix` - Rewrite existing shebangs to use `/usr/bin/env`
+    (requires `--require-env`).
 
 #### `check-illegal-windows-names`
 Check for files that cannot be created on Windows.

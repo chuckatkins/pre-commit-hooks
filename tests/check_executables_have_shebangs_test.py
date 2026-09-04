@@ -30,6 +30,69 @@ def test_has_shebang(content, tmpdir):
     assert main((str(path),)) == 0
 
 
+@pytest.mark.parametrize(
+    ('content', 'expected'), (
+        (b'#!/usr/bin/env python\n', True),
+        (b'#!/usr/bin/env -S python -O\n', True),
+        (b'#!/bin/env bash\n', False),
+        (b'#!/bin/bash\n', False),
+        (b'#!/usr/bin/env\n', False),
+    ),
+)
+def test_require_env_shebang(content, expected, tmpdir):
+    path = tmpdir.join('path')
+    path.write(content, 'wb')
+    assert check_executables_have_shebangs.has_shebang(
+        str(path), require_env=True,
+    ) is expected
+
+
+@pytest.mark.parametrize(
+    ('content', 'expected'), (
+        (b'#!/bin/bash\necho hi\n', b'#!/usr/bin/env bash\necho hi\n'),
+        (
+            b'#!/opt/bin/python -O\nprint("hi")\n',
+            b'#!/usr/bin/env -S python -O\nprint("hi")\n',
+        ),
+        (b'#!/bin/env bash\necho hi\n', b'#!/usr/bin/env bash\necho hi\n'),
+    ),
+)
+def test_require_env_fix(content, expected, tmpdir, capsys):
+    path = tmpdir.join('path')
+    path.write(content, 'wb')
+
+    assert check_executables_have_shebangs._check_executable(
+        str(path), require_env=True, fix=True,
+    ) == 1
+    stdout, stderr = capsys.readouterr()
+    assert stdout == f'Fixing {path}\n'
+    assert stderr == ''
+    assert path.read('rb') == expected
+
+    assert check_executables_have_shebangs._check_executable(
+        str(path), require_env=True, fix=True,
+    ) == 0
+
+
+@pytest.mark.parametrize(
+    'content', (b'echo hi\n', b'#!\n', b'#!/\n', b'#!/bin/env\n'),
+)
+def test_require_env_fix_cannot_infer_interpreter(content, tmpdir):
+    path = tmpdir.join('path')
+    path.write(content, 'wb')
+
+    assert check_executables_have_shebangs._check_executable(
+        str(path), require_env=True, fix=True,
+    ) == 1
+    assert path.read('rb') == content
+
+
+def test_fix_requires_require_env():
+    with pytest.raises(SystemExit) as excinfo:
+        main(('--fix',))
+    assert excinfo.value.code == 2
+
+
 @skip_win32  # pragma: win32 no cover
 @pytest.mark.parametrize(
     'content', (
@@ -102,6 +165,23 @@ def test_check_git_filemode_failing(tmpdir):
 
         files = (f_path,)
         assert check_executables_have_shebangs._check_git_filemode(files) == 1
+
+
+def test_check_git_filemode_require_env(tmpdir):
+    with tmpdir.as_cwd():
+        cmd_output('git', 'init', '.')
+
+        f = tmpdir.join('f')
+        f.write('#!/bin/bash')
+        f_path = str(f)
+        cmd_output('git', 'add', f_path)
+        cmd_output('git', 'update-index', '--chmod=+x', f_path)
+
+        files = (f_path,)
+        assert check_executables_have_shebangs._check_git_filemode(files) == 0
+        assert check_executables_have_shebangs._check_git_filemode(
+            files, require_env=True,
+        ) == 1
 
 
 @pytest.mark.parametrize(
